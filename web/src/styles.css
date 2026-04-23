@@ -1,0 +1,228 @@
+@import "tailwindcss";
+@plugin "tailwindcss-animate";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+}
+
+:root {
+  --radius: 0.5rem;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.546 0.245 262.881);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.985 0 0);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+}
+
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.908 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --destructive-foreground: oklch(0.985 0 0);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+    box-sizing: border-box;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    margin: 0;
+  }
+  html, body, #app {
+    min-height: 100%;
+  }
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+  button, input, textarea, select {
+    font: inherit;
+  }
+  code {
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  }
+}
+
+.history-strip {
+  display: flex;
+  gap: 2px;
+  min-height: 1.1rem;
+}
+.history-strip__block {
+  flex: 1;
+  border-radius: 999px;
+  min-width: 0;
+  background: var(--muted);
+}
+.history-strip__block--up { background: #4ade80; }
+.history-strip__block--down { background: #f87171; }
+.history-strip__legend {
+  display: flex;
+  justify-content: space-between;
+  color: var(--muted-foreground);
+  font-size: 0.72rem;
+}
+.sparkline {
+  width: 100%;
+  height: 56px;
+}
+
+/* ── Floating tooltips ────────────────────────────────────────────────────── */
+.history-block-tooltip {
+  position: fixed;
+  transform: translate(-50%, -100%);
+  z-index: 9999;
+  pointer-events: none;
+  background: var(--popover);
+  color: var(--popover-foreground);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 9px;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(0,0,0,.18);
+}
+.history-block-tooltip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: var(--border);
+}
+.tooltip-status--down { color: #f87171; font-weight: 600; }
+.tooltip-latency { font-weight: 600; }
+.tooltip-time { color: var(--muted-foreground); font-size: 0.68rem; }
+
+.sparkline-tooltip {
+  position: absolute;
+  transform: translate(-50%, -110%);
+  z-index: 9999;
+  pointer-events: none;
+  background: var(--popover);
+  color: var(--popover-foreground);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 9px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(0,0,0,.18);
+}
+
+/* ── SSL certificate footer ──────────────────────────────────────────────── */
+.ssl-footer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 8px 12px;
+  margin: 0 -24px;
+  width: calc(100% + 48px);
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  transition: opacity 0.15s;
+  text-align: left;
+}
+.ssl-footer:hover { opacity: 0.85; }
+.ssl-footer--ok {
+  background: color-mix(in oklab, var(--muted) 55%, transparent);
+  color: var(--muted-foreground);
+  border-top: 1px solid var(--border);
+}
+.ssl-footer--warning {
+  background: oklch(0.85 0.12 85 / 20%);
+  color: oklch(0.6 0.15 85);
+  border-top: 1px solid oklch(0.85 0.12 85 / 30%);
+}
+.ssl-footer--critical {
+  background: oklch(0.7 0.2 25 / 15%);
+  color: oklch(0.55 0.22 25);
+  border-top: 1px solid oklch(0.7 0.2 25 / 30%);
+}
+.ssl-footer--error {
+  background: oklch(0.7 0.2 25 / 15%);
+  color: oklch(0.55 0.22 25);
+  border-top: 1px solid oklch(0.7 0.2 25 / 30%);
+}
+.dark .ssl-footer--ok {
+  background: color-mix(in oklab, var(--muted) 72%, transparent);
+  color: var(--muted-foreground);
+  border-top-color: var(--border);
+}
+.dark .ssl-footer--warning {
+  background: oklch(0.55 0.12 85 / 15%);
+  color: oklch(0.82 0.14 85);
+  border-top-color: oklch(0.55 0.12 85 / 25%);
+}
+.dark .ssl-footer--critical,
+.dark .ssl-footer--error {
+  background: oklch(0.5 0.18 25 / 15%);
+  color: oklch(0.78 0.18 25);
+  border-top-color: oklch(0.5 0.18 25 / 25%);
+}
+
