@@ -5,7 +5,20 @@ import { logger } from '../shared/logger';
 import type { CheckResult } from '../shared/types';
 import type { ValidatedServiceConfig } from '../config/schemas';
 
-export async function handleCheckResult(
+const pending = new Map<string, Promise<void>>();
+
+export async function handleCheckResult(result: CheckResult, service: ValidatedServiceConfig): Promise<void> {
+  const previous = pending.get(result.serviceId) ?? Promise.resolve();
+  const next = previous.catch(() => {}).then(() => processCheckResult(result, service));
+  pending.set(result.serviceId, next);
+  try {
+    await next;
+  } finally {
+    if (pending.get(result.serviceId) === next) pending.delete(result.serviceId);
+  }
+}
+
+async function processCheckResult(
   result: CheckResult,
   service: ValidatedServiceConfig
 ): Promise<void> {
@@ -68,20 +81,6 @@ export async function rebuildStateFromDb(service: ValidatedServiceConfig): Promi
   let consecutiveFailures = 0;
   let consecutiveSuccesses = 0;
 
-  for (const r of results) {
-    if (r.status === 'up') {
-      consecutiveSuccesses++;
-      consecutiveFailures = 0;
-      break;
-    } else {
-      consecutiveFailures++;
-      consecutiveSuccesses = 0;
-    }
-  }
-
-  // Actually count consecutive from the most recent
-  consecutiveFailures = 0;
-  consecutiveSuccesses = 0;
   for (const r of results) {
     if (r.status === results[0]?.status) {
       if (r.status === 'up') consecutiveSuccesses++;

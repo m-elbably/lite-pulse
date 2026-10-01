@@ -16,6 +16,7 @@ export const listServices = () => getAdapter().listServices();
 export const createServiceConfig = (service: ValidatedServiceConfig) => getAdapter().createService(service);
 export const updateServiceConfig = (id: string, service: ValidatedServiceConfig) => getAdapter().updateService(id, service);
 export const deleteServiceConfig = (id: string) => getAdapter().deleteService(id);
+export const setServicePaused = (id: string, paused: boolean) => getAdapter().setServicePaused(id, paused);
 export const listAlerts = () => getAdapter().listAlerts();
 export const createAlertConfig = (alert: ValidatedAlertChannel) => getAdapter().createAlert(alert);
 export const updateAlertConfig = (id: string, alert: ValidatedAlertChannel) => getAdapter().updateAlert(id, alert);

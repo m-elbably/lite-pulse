@@ -23,7 +23,8 @@ export interface DashboardService {
   status: ServiceStatus;
   responseTime: number | null;
   lastCheckedAt: string | null;
-  uptime24h: number;
+  uptime24h: number | null;
+  stale: boolean;
   paused: boolean;
   activeIncident: { id: string } | null;
   history: StatusHistoryItem[];
@@ -37,6 +38,9 @@ export interface StatusResponse {
     total: number;
     up: number;
     down: number;
+    unknown: number;
+    paused: number;
+    stale: number;
   };
   services: DashboardService[];
 }
@@ -95,6 +99,13 @@ export interface AlertChannel {
   headers?: Record<string, string>;
   chatId?: string;
   botToken?: string;
+}
+
+export interface DeliveryStatus {
+  lastAttemptAt: string;
+  lastSuccessAt: string | null;
+  error: string | null;
+  pending: boolean;
 }
 
 export interface AdminConfig {

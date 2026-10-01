@@ -17,9 +17,8 @@ export function useAuth() {
     if (fetchPromise) return fetchPromise;
     fetchPromise = apiFetch<AuthState>('/api/auth/me').then(state => {
       authState.value = state;
-      fetchPromise = null;
       return state;
-    });
+    }).finally(() => { fetchPromise = null; });
     return fetchPromise;
   }
 

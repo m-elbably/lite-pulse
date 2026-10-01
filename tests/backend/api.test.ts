@@ -9,6 +9,7 @@ mock.module(path.join(dbBase, 'repos'), () => ({
     { status: 'up', responseTime: 120, checkedAt: new Date() },
   ]),
   getUptime24h: mock(async () => 99.5),
+  setServicePaused: mock(async () => {}),
   getRecentIncidents: mock(async () => ({
     total: 1,
     incidents: [

@@ -201,7 +201,7 @@ function submit(): void {
           <div class="space-y-1.5">
             <Label for="service-cooldown-expanded">Alert cooldown (min)</Label>
             <Input id="service-cooldown-expanded" v-model.number="form.alertCooldownMinutes" min="0" type="number" />
-            <p class="text-xs text-muted-foreground">Prevents repeated notifications while a service stays down.</p>
+            <p class="text-xs text-muted-foreground">Limits new outage alerts while a service flaps. Recovery alerts still send.</p>
           </div>
 
           <div class="space-y-1.5">

@@ -106,14 +106,10 @@ export class MongoAdapter implements DbAdapter {
   }
 
   async insertCheckResult(result: CheckResult): Promise<void> {
-	try {
-	  await this.db.collection<StoredCheckResultDocument>('check_results').insertOne({
+	await this.db.collection<StoredCheckResultDocument>('check_results').insertOne({
 		_id: randomUUID(),
 		...result,
-	  });
-	} catch (err: unknown) {
-	  logger.error({ err: err instanceof Error ? err.message : String(err) }, 'Failed to insert check result');
-	}
+	});
   }
 
   async getRecentResults(serviceId: string, limit: number): Promise<CheckResult[]> {
@@ -133,15 +129,13 @@ export class MongoAdapter implements DbAdapter {
 	}));
   }
 
-  async getUptime24h(serviceId: string): Promise<number> {
+  async getUptime24h(serviceId: string): Promise<number | null> {
 	const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
-	const results = await this.db
-	  .collection('check_results')
-	  .find({ serviceId, checkedAt: { $gte: since } })
-	  .toArray();
-	if (results.length === 0) return 100;
-	const up = results.filter(r => r.status === 'up').length;
-	return Math.round((up / results.length) * 10000) / 100;
+    const [counts] = await this.db.collection('check_results').aggregate<{ total: number; up: number }>([
+      { $match: { serviceId, checkedAt: { $gte: since } } },
+      { $group: { _id: null, total: { $sum: 1 }, up: { $sum: { $cond: [{ $eq: ['$status', 'up'] }, 1, 0] } } } },
+    ]).toArray();
+    return counts ? Math.round((counts.up / counts.total) * 10000) / 100 : null;
   }
 
   async deleteOldResults(retentionDays: number): Promise<void> {
@@ -204,6 +198,7 @@ export class MongoAdapter implements DbAdapter {
 
 	return docs.map(({ _id, normalizedName: _normalizedName, ...service }) => ({
 	  ...service,
+      paused: service.paused ?? false,
 	  id: toPublicId(_id, (service as { id?: unknown }).id),
 	}));
   }
@@ -256,6 +251,10 @@ export class MongoAdapter implements DbAdapter {
 		},
 	  },
 	);
+  }
+
+  async setServicePaused(serviceId: string, paused: boolean): Promise<void> {
+    await this.db.collection<StoredServiceDocument>('services').updateOne(legacyIdFilter(serviceId), { $set: { paused } });
   }
 
   async deleteService(serviceId: string): Promise<void> {

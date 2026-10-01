@@ -2,6 +2,7 @@ export interface ServiceConfig {
   id: string;
   name: string;
   type: 'http' | 'tcp';
+  paused?: boolean;
   url?: string;
   host?: string;
   port?: number;

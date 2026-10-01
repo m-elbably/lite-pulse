@@ -23,7 +23,8 @@ LitePulse is a self-hosted uptime monitor for HTTP endpoints, HTTPS certificates
 - Dashboard for service health, uptime, incidents, and recent history
 - Admin UI for managing services and alert channels in the browser
 - MongoDB or SQLite persistence
-- Pause / resume support for monitored services
+- Pause / resume support that survives server restarts
+- Send test notifications and inspect recent delivery success or failure in the admin console
 - Input validation and secure default HTTP headers
 
 ## Tech stack
@@ -105,7 +106,9 @@ LitePulse uses **session cookies** for authentication.
 - If `PUBLIC_STATUS_PAGE=false`, the dashboard can be protected with `STATUS_USERNAME` and `STATUS_PASSWORD`.
 - Admin sessions can also access the protected status dashboard.
 
-> Current sessions are stored in memory, so restarting the server signs users out.
+> Sessions expire after seven days on the server and browser. Sessions are stored in memory, so restarting the server signs users out. HTTPS requests (including trusted proxy forwarding with `X-Forwarded-Proto: https`) receive Secure cookies.
+
+With only admin credentials configured, the private dashboard requires an admin login. With neither credential pair configured, the dashboard and admin console are open for local development.
 
 ## Configuration
 
@@ -126,6 +129,8 @@ These are the main environment variables you will usually care about:
 | `MONGO_USE_CAPPED` | `false` | Enables capped collection mode for MongoDB result storage |
 | `MONGO_CAPPED_SIZE_MB` | `256` | Size of the capped collection when enabled |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` | — | SMTP settings for email alerts |
+
+Existing SQLite databases receive an idempotent `paused` column addition during startup; existing services start unpaused. MongoDB stores the pause flag on each service.
 
 For the full example, see [`.env.example`](.env.example).
 
@@ -148,7 +153,11 @@ Services and alert channels are stored in the configured database and can be cre
 - Webhook
 - Telegram
 
-Alert delivery is asynchronous and retried with exponential backoff.
+Alert delivery is asynchronous and retried with exponential backoff. Webhook and Telegram requests have a 10-second deadline; SMTP connection, greeting, and socket timeouts are also bounded. “Send test” uses the saved channel, makes one attempt, and does not create an incident. Delivery status is kept in memory and resets when the server restarts.
+
+Maintenance windows use server-local time, with selected weekdays identifying when a window starts; a window may cross midnight and last up to seven days. Incidents opened during maintenance are checked again after maintenance ends and notify once if still open. Suppressed notifications are held in memory, so this catch-up state resets on restart.
+
+Alert cooldown applies to new outage notifications across recoveries, limiting flapping. Recovery notifications still send. Paused services retain their last result but do not count as actively healthy. Overdue checks show unknown/stale status, and services without results show no uptime percentage.
 
 ## HTTP surface
 
@@ -168,6 +177,8 @@ LitePulse exposes a small HTTP surface:
 - `GET /api/admin/config` — full stored configuration
 - `POST/PUT/DELETE /api/admin/services...` — service management
 - `POST/PUT/DELETE /api/admin/alerts...` — alert-channel management
+- `GET /api/admin/alerts/delivery` — recent delivery status by channel
+- `POST /api/admin/alerts/:id/test` — send one test notification through a saved channel
 
 ## Architecture overview
 

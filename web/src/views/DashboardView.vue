@@ -13,7 +13,7 @@ import CardDescription from '@/components/ui/CardDescription.vue';
 import CardContent from '@/components/ui/CardContent.vue';
 import { useDashboard } from '../composables/useDashboard.ts';
 
-const { countdown, errorMessage, incidentItems, isLoading, isOffline, lastRefreshed, services, summary, refresh } = useDashboard();
+const { countdown, errorMessage, incidentItems, isLoading, isOffline, isRefreshing, lastRefreshed, services, summary, refresh } = useDashboard();
 </script>
 
 <template>
@@ -32,14 +32,14 @@ const { countdown, errorMessage, incidentItems, isLoading, isOffline, lastRefres
               {{ isOffline ? 'Retry in' : 'Auto-refresh in' }} <kbd class="inline-flex items-center rounded border border-border bg-muted px-1.5 py-0.5 text-xs font-mono">{{ countdown }}</kbd>s · Last refreshed {{ lastRefreshed }}
             </CardDescription>
           </div>
-          <Button variant="outline" size="sm" class="gap-2 shrink-0" @click="refresh">
+          <Button variant="outline" size="sm" class="gap-2 shrink-0" :disabled="isRefreshing" @click="refresh">
             <RefreshCw class="w-3.5 h-3.5" />
             Refresh
           </Button>
         </div>
       </CardHeader>
       <CardContent class="space-y-4">
-        <StatusBanner :down-count="summary.down" />
+        <StatusBanner :summary="summary" :loading="isLoading" :offline="isOffline" />
         <SummaryBar :total="summary.total" :up="summary.up" :down="summary.down" />
       </CardContent>
     </Card>
@@ -53,7 +53,7 @@ const { countdown, errorMessage, incidentItems, isLoading, isOffline, lastRefres
         <ServiceCardSkeleton v-for="i in 3" :key="i" />
       </div>
 
-      <div v-else-if="services.length === 0" class="rounded-lg border border-dashed border-border py-12 text-center text-muted-foreground text-sm">
+      <div v-else-if="services.length === 0 && !isOffline" class="rounded-lg border border-dashed border-border py-12 text-center text-muted-foreground text-sm">
         No services configured yet.
       </div>
       <div v-else class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">

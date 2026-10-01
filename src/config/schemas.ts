@@ -4,20 +4,20 @@ const MaintenanceWindowSchema = z.object({
   weekdays: z.array(z.number().int().min(0).max(6)).optional(),
   startHour: z.number().int().min(0).max(23),
   startMinute: z.number().int().min(0).max(59).default(0),
-  durationMinutes: z.number().int().min(1),
+  durationMinutes: z.number().int().min(1).max(10080),
 });
 
 const ServiceConfigShape = {
   name: z.string().trim().min(1, 'name is required'),
   type: z.enum(['http', 'tcp']),
-  url: z.string().trim().url().optional(),
+  url: z.url({ protocol: /^https?$/ }).trim().optional(),
   host: z.string().trim().min(1).optional(),
   port: z.number().int().min(1).max(65535).optional(),
   interval: z.number().int().min(30),
   timeout: z.number().int().min(1).max(30),
-  method: z.string().trim().min(1).optional().default('GET'),
+  method: z.string().trim().toUpperCase().refine(value => ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'].includes(value), 'Unsupported HTTP method').optional().default('GET'),
   headers: z.record(z.string(), z.string()).optional(),
-  expectedStatus: z.number().int().optional().default(200),
+  expectedStatus: z.number().int().min(100).max(599).optional().default(200),
   failureThreshold: z.number().int().min(1),
   successThreshold: z.number().int().min(1),
   alertChannels: z.array(z.string().min(1)).optional().default([]),
@@ -31,8 +31,8 @@ const AlertChannelShape = {
   description: z.string().trim().min(1).optional(),
   type: z.enum(['email', 'webhook', 'telegram']),
   to: z.array(z.string().email()).optional(),
-  url: z.string().trim().url().optional(),
-  method: z.string().trim().min(1).optional().default('POST'),
+  url: z.url({ protocol: /^https?$/ }).trim().optional(),
+  method: z.string().trim().toUpperCase().refine(value => ['POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'].includes(value), 'Webhook method must support a request body').optional().default('POST'),
   headers: z.record(z.string(), z.string()).optional(),
   chatId: z.string().trim().min(1).optional(),
   botToken: z.string().trim().min(1).optional(),
@@ -59,7 +59,7 @@ function refineServiceSchema<T extends z.ZodObject<z.ZodRawShape>>(schema: T) {
     .refine(
       (value) => {
         const s = value as z.infer<typeof ServiceConfigBaseSchema>;
-        return s.sslExpiryWarningDays === undefined || (s.type === 'http' && !!s.url && new URL(s.url).protocol === 'https:');
+        return s.sslExpiryWarningDays === undefined || (s.type === 'http' && !!s.url && URL.canParse(s.url) && new URL(s.url).protocol === 'https:');
       },
       { message: 'sslExpiryWarningDays requires an https URL' },
     );
@@ -89,6 +89,7 @@ function refineAlertSchema<T extends z.ZodObject<z.ZodRawShape>>(schema: T) {
 
 export const ServiceConfigSchema = refineServiceSchema(ServiceConfigBaseSchema.extend({
   id: z.string().trim().min(1),
+  paused: z.boolean().optional(),
 }));
 
 export const ServiceConfigInputSchema = refineServiceSchema(ServiceConfigBaseSchema.extend({
