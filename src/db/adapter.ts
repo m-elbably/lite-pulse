@@ -11,7 +11,7 @@ export interface DbAdapter {
 
   insertCheckResult(result: CheckResult): Promise<void>;
   getRecentResults(serviceId: string, limit: number): Promise<CheckResult[]>;
-  getUptime24h(serviceId: string): Promise<number>;
+  getUptime24h(serviceId: string): Promise<number | null>;
   deleteOldResults(retentionDays: number): Promise<void>;
 
   insertIncident(incident: Incident): Promise<string>;
@@ -23,6 +23,7 @@ export interface DbAdapter {
   createService(service: ValidatedServiceConfig): Promise<void>;
   updateService(serviceId: string, service: ValidatedServiceConfig): Promise<void>;
   deleteService(serviceId: string): Promise<void>;
+  setServicePaused(serviceId: string, paused: boolean): Promise<void>;
   listAlerts(): Promise<ValidatedAlertChannel[]>;
   createAlert(alert: ValidatedAlertChannel): Promise<void>;
   updateAlert(alertId: string, alert: ValidatedAlertChannel): Promise<void>;

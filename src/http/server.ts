@@ -16,7 +16,7 @@ export const app = new Hono();
 
 app.use('*', secureHeaders());
 
-const allowedOrigin = process.env.CORS_ORIGIN ?? '*';
+const allowedOrigin = process.env.CORS_ORIGIN ?? 'http://localhost:5173';
 app.use('/api/*', cors({ origin: allowedOrigin, credentials: true }));
 
 app.route('/api/auth', authRoute);

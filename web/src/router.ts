@@ -17,7 +17,12 @@ router.beforeEach(async (to) => {
   if (to.meta.public) return true;
 
   const { fetchAuthState } = useAuth();
-  const state = await fetchAuthState();
+  let state;
+  try {
+    state = await fetchAuthState();
+  } catch {
+    return { name: 'login', query: { redirect: to.fullPath, error: 'unavailable' } };
+  }
 
   if (to.name === 'dashboard' && state.publicStatus) return true;
 
@@ -26,8 +31,8 @@ router.beforeEach(async (to) => {
     return true;
   }
 
-  if (!state.statusViewer && !state.admin) {
-    return { name: 'login', query: { redirect: to.fullPath } };
+  if (!state.statusViewer) {
+    return { name: 'login', query: { redirect: to.fullPath, mode: state.statusAuthEnabled ? 'status' : 'admin' } };
   }
 
   return true;

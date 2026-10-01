@@ -1,8 +1,9 @@
-import { ref, watch, onMounted } from 'vue';
+import { ref, watch, onMounted, onBeforeUnmount } from 'vue';
 
 type Theme = 'light' | 'dark' | 'system';
 
 const theme = ref<Theme>('system');
+const isDark = ref(false);
 
 function applyTheme(t: Theme) {
   const root = document.documentElement;
@@ -11,17 +12,20 @@ function applyTheme(t: Theme) {
   } else {
     root.classList.remove('dark');
   }
+  isDark.value = root.classList.contains('dark');
 }
 
 export function useTheme() {
+  let media: MediaQueryList | undefined;
+  const handleSystemTheme = () => { if (theme.value === 'system') applyTheme('system'); };
+  onBeforeUnmount(() => media?.removeEventListener('change', handleSystemTheme));
   onMounted(() => {
     const saved = localStorage.getItem('lp-theme') as Theme | null;
     theme.value = saved ?? 'light';
     applyTheme(theme.value);
 
-    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-      if (theme.value === 'system') applyTheme('system');
-    });
+    media = window.matchMedia('(prefers-color-scheme: dark)');
+    media.addEventListener('change', handleSystemTheme);
   });
 
   watch(theme, (val) => {
@@ -34,6 +38,6 @@ export function useTheme() {
     theme.value = isDark ? 'light' : 'dark';
   }
 
-  return { theme, toggleTheme };
+  return { theme, isDark, toggleTheme };
 }
 

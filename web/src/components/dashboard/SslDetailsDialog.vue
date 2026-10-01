@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue';
 import { ShieldAlert, ShieldCheck, ShieldX } from 'lucide-vue-next';
 import Dialog from '@/components/ui/Dialog.vue';
 import DialogHeader from '@/components/ui/DialogHeader.vue';
@@ -26,7 +27,7 @@ function formatDateTime(iso: string) {
   return new Date(iso).toLocaleString();
 }
 
-const urgency = getSslStatusDisplay(props.ssl, props.warningDays ?? null)?.variant ?? 'ok';
+const urgency = computed(() => getSslStatusDisplay(props.ssl, props.warningDays ?? null)?.variant ?? 'ok');
 </script>
 
 <template>
@@ -42,8 +43,11 @@ const urgency = getSslStatusDisplay(props.ssl, props.warningDays ?? null)?.varia
           }"
         >
           <ShieldX v-if="urgency === 'error'" class="h-5 w-5 text-red-500" />
-          <ShieldAlert v-else-if="urgency === 'critical' || urgency === 'warning'" class="h-5 w-5"
-            :class="urgency === 'critical' ? 'text-red-500' : 'text-yellow-500'" />
+          <ShieldAlert
+            v-else-if="urgency === 'critical' || urgency === 'warning'"
+            class="h-5 w-5"
+            :class="urgency === 'critical' ? 'text-red-500' : 'text-yellow-500'"
+          />
           <ShieldCheck v-else class="h-5 w-5 text-green-500" />
         </div>
         <div>

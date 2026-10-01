@@ -1,7 +1,7 @@
 /**
- * In-memory pause registry.
+ * Runtime pause registry, restored from stored service configuration at startup.
  * Paused services still appear in the dashboard but their checks are skipped.
- * State is intentionally volatile — clears on process restart (lightweight behaviour).
+ * API changes persist before updating this registry.
  */
 const paused = new Set<string>();
 

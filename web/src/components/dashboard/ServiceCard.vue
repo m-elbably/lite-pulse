@@ -73,6 +73,7 @@ function hideBlockTooltip() {
           <Badge :variant="statusVariant">
             {{ service.status === 'up' ? '● UP' : service.status === 'down' ? '● DOWN' : '● UNKNOWN' }}
           </Badge>
+          <Badge v-if="service.stale" variant="warning">Stale</Badge>
           <Badge v-if="service.paused" variant="warning">⏸ Paused</Badge>
         </div>
       </div>
@@ -84,7 +85,7 @@ function hideBlockTooltip() {
         </div>
         <div>
           <p class="text-xs text-muted-foreground">Uptime 24h</p>
-          <p class="text-sm font-semibold">{{ service.uptime24h }}%</p>
+          <p class="text-sm font-semibold">{{ service.uptime24h === null ? '—' : `${service.uptime24h}%` }}</p>
         </div>
         <div>
           <p class="text-xs text-muted-foreground">Last check</p>
