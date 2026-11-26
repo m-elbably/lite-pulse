@@ -64,3 +64,26 @@ describe('runHttpCheck', () => {
     expect(result.error).toContain('DNS lookup failed for example.com');
   });
 });
+
+describe('runHttpCheck status range and keyword', () => {
+  const anyStatus: ServiceConfig = { ...httpService, expectedStatus: undefined };
+
+  it('accepts any 2xx when no exact status is configured, and releases the body', async () => {
+    let cancelled = false;
+    const body = new ReadableStream({ cancel() { cancelled = true; } });
+    globalThis.fetch = mock(async () => new Response(body, { status: 204 })) as unknown as typeof fetch;
+    const { runHttpCheck } = await import('../../src/monitoring/checkers/http');
+    expect((await runHttpCheck(anyStatus)).status).toBe('up');
+    expect(cancelled).toBe(true);
+  });
+
+  it('fails when the expected keyword is missing', async () => {
+    globalThis.fetch = mock(async () => new Response('status: degraded', { status: 200 })) as unknown as typeof fetch;
+    const { runHttpCheck } = await import('../../src/monitoring/checkers/http');
+    const result = await runHttpCheck({ ...anyStatus, expectedKeyword: 'ok' });
+    expect(result.status).toBe('down');
+    expect(result.error).toContain('does not contain "ok"');
+    globalThis.fetch = mock(async () => new Response('all ok', { status: 200 })) as unknown as typeof fetch;
+    expect((await runHttpCheck({ ...anyStatus, expectedKeyword: 'ok' })).status).toBe('up');
+  });
+});

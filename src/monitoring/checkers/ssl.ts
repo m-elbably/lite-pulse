@@ -9,20 +9,23 @@ export function checkSslExpiry(serviceId: string, url: string, timeoutMs = 10_00
   return new Promise(resolve => {
     const checkedAt = new Date();
     let hostname: string;
+    let port: number;
 
     try {
-      hostname = new URL(url).hostname;
+      const target = new URL(url);
+      hostname = target.hostname.replace(/^\[|\]$/g, '');
+      port = Number(target.port || 443);
     } catch {
       resolve({ serviceId, hostname: url, expiresAt: new Date(0), daysRemaining: -1, checkedAt, error: 'Invalid URL' });
       return;
     }
 
     const socket = tls.connect(
-      { host: hostname, port: 443, servername: hostname, rejectUnauthorized: false },
+      { host: hostname, port, servername: hostname, rejectUnauthorized: false },
       () => {
         try {
           const cert = socket.getPeerCertificate();
-          socket.end();
+          socket.destroy();
 
           if (!cert || !cert.valid_to) {
             resolve({ serviceId, hostname, expiresAt: new Date(0), daysRemaining: -1, checkedAt, error: 'No certificate returned' });
@@ -44,6 +47,7 @@ export function checkSslExpiry(serviceId: string, url: string, timeoutMs = 10_00
     });
 
     socket.on('error', (err: Error) => {
+      socket.destroy();
       resolve({ serviceId, hostname, expiresAt: new Date(0), daysRemaining: -1, checkedAt, error: err.message });
     });
   });

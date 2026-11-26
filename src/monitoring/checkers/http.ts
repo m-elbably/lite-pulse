@@ -15,7 +15,8 @@ function describeHttpFailure(error: unknown, service: ServiceConfig): string {
     }
   })();
 
-  if (normalized.includes('econnrefused') || normalized.includes('connection refused')) {
+  const code = (error as { code?: unknown } | null)?.code;
+  if (code === 'ConnectionRefused' || normalized.includes('econnrefused') || normalized.includes('connection refused')) {
     return `Connection refused by ${hostname}. The host is reachable, but nothing is accepting connections at the target port.`;
   }
 
@@ -27,7 +28,7 @@ function describeHttpFailure(error: unknown, service: ServiceConfig): string {
     return `TLS handshake failed while connecting to ${hostname}. Verify the certificate chain, hostname, and protocol settings.`;
   }
 
-  if (normalized.includes('networkerror') || normalized.includes('fetch failed') || normalized.includes('failed to fetch')) {
+  if (normalized.includes('networkerror') || normalized.includes('fetch failed') || normalized.includes('failed to fetch') || normalized.includes('unable to connect')) {
     return `Unable to connect to ${hostname}. Check outbound network access, firewall rules, and whether the endpoint is reachable from the monitoring server.`;
   }
 
@@ -38,35 +39,33 @@ export async function runHttpCheck(service: ServiceConfig): Promise<CheckResult>
   const start = Date.now();
   const checkedAt = new Date();
   const method = service.method ?? 'GET';
-  const expectedStatus = service.expectedStatus ?? 200;
-  const timeoutMs = service.timeout * 1000;
+  const controller = new AbortController();
+  // The timeout covers the body read too, since keyword checks consume it.
+  const timer = setTimeout(() => controller.abort(), service.timeout * 1000);
+  const down = (error: string, httpStatus?: number): CheckResult => ({
+    serviceId: service.id, status: 'down', responseTime: Date.now() - start, checkedAt, httpStatus, error,
+  });
 
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-
-    let response: Response;
-    try {
-      response = await fetch(service.url!, {
-        method,
-        headers: service.headers,
-        signal: controller.signal,
-      });
-    } finally {
-      clearTimeout(timer);
-    }
-
+    const response = await fetch(service.url!, {
+      method,
+      headers: service.headers,
+      signal: controller.signal,
+    });
     const responseTime = Date.now() - start;
+    const statusOk = service.expectedStatus
+      ? response.status === service.expectedStatus
+      : response.status >= 200 && response.status < 300;
 
-    if (response.status !== expectedStatus) {
-      return {
-        serviceId: service.id,
-        status: 'down',
-        responseTime,
-        checkedAt,
-        httpStatus: response.status,
-        error: `Expected status ${expectedStatus}, got ${response.status}`,
-      };
+    if (!statusOk || !service.expectedKeyword) {
+      // Always release the body so sockets are not held open.
+      await response.body?.cancel();
+    }
+    if (!statusOk) {
+      return down(`Expected status ${service.expectedStatus ?? '2xx'}, got ${response.status}`, response.status);
+    }
+    if (service.expectedKeyword && !(await response.text()).includes(service.expectedKeyword)) {
+      return down(`Response body does not contain "${service.expectedKeyword}"`, response.status);
     }
 
     return {
@@ -77,14 +76,8 @@ export async function runHttpCheck(service: ServiceConfig): Promise<CheckResult>
       httpStatus: response.status,
     };
   } catch (error: unknown) {
-    const responseTime = Date.now() - start;
-
-    return {
-      serviceId: service.id,
-      status: 'down',
-      responseTime,
-      checkedAt,
-      error: describeHttpFailure(error, service),
-    };
+    return down(describeHttpFailure(error, service));
+  } finally {
+    clearTimeout(timer);
   }
 }

@@ -1,5 +1,9 @@
 import type { ApiErrorResponse } from '../types';
 
+export class ApiError extends Error {
+  constructor(message: string, readonly status: number) { super(message); }
+}
+
 export async function apiFetch<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
   const response = await fetch(input, {
     ...init,
@@ -20,7 +24,7 @@ export async function apiFetch<T>(input: RequestInfo | URL, init?: RequestInit):
       // Ignore invalid JSON error bodies.
     }
 
-    throw new Error(message);
+    throw new ApiError(message, response.status);
   }
 
   if (response.status === 204) {

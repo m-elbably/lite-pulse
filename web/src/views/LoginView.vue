@@ -22,7 +22,7 @@ const username = ref('');
 const password = ref('');
 const showPassword = ref(false);
 const isLoading = ref(false);
-const error = ref('');
+const error = ref(route.query.error === 'unavailable' ? 'Unable to reach the server. Please try again.' : '');
 
 const isAdmin = computed(() => props.mode === 'admin' || route.query.mode === 'admin');
 
@@ -41,8 +41,8 @@ async function submit() {
     }
     const redirect = (route.query.redirect as string) ?? '/';
     await router.push(redirect);
-  } catch {
-    error.value = 'Invalid username or password.';
+  } catch (caught) {
+    error.value = caught instanceof Error ? caught.message : 'Unable to sign in. Please try again.';
   } finally {
     isLoading.value = false;
   }

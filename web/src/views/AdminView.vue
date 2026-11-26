@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
 import { toast } from 'vue-sonner';
-import { Plus, Pencil, Trash2, Play, Pause, RefreshCw } from 'lucide-vue-next';
+import { Plus, Pencil, Trash2, Play, Pause, RefreshCw, Send } from 'lucide-vue-next';
 import AlertForm from '../components/admin/AlertForm.vue';
 import ServiceForm from '../components/admin/ServiceForm.vue';
 import Button from '@/components/ui/Button.vue';
@@ -28,10 +28,12 @@ import TableHead from '@/components/ui/TableHead.vue';
 import TableCell from '@/components/ui/TableCell.vue';
 import { useAdminApi } from '../composables/useAdminApi.ts';
 import { cloneEditableValue } from '../lib/cloneEditableValue.ts';
-import type { AdminConfig, AlertChannel, ServiceConfig } from '../types.ts';
+import type { AdminConfig, AlertChannel, DeliveryStatus, ServiceConfig } from '../types.ts';
 
 const adminApi = useAdminApi();
 const config = ref<AdminConfig>({ services: [], alerts: [] });
+const deliveries = ref<Record<string, DeliveryStatus>>({});
+const testingAlerts = ref<Set<string>>(new Set());
 const pausedIds = ref<Set<string>>(new Set());
 const isLoading = ref(true);
 const isSaving = ref(false);
@@ -52,11 +54,13 @@ const deleteAlertError = ref('');
 async function refresh(): Promise<void> {
   try {
     isLoading.value = true;
-    const [nextConfig, runtimeServices] = await Promise.all([
+    const [nextConfig, runtimeServices, deliveryResponse] = await Promise.all([
       adminApi.listConfig(),
       adminApi.listRuntimeServices(),
+      adminApi.deliveryStatuses(),
     ]);
     config.value = nextConfig;
+    deliveries.value = deliveryResponse.channels;
     pausedIds.value = new Set(runtimeServices.services.filter(s => s.paused).map(s => s.id));
   } catch (error) {
     toast.error(error instanceof Error ? error.message : String(error));
@@ -122,6 +126,25 @@ async function togglePause(serviceId: string): Promise<void> {
   } catch (error) {
     toast.error(error instanceof Error ? error.message : String(error));
   }
+}
+
+async function testAlert(id: string): Promise<void> {
+  if (testingAlerts.value.has(id)) return;
+  testingAlerts.value.add(id);
+  try {
+    await adminApi.testAlert(id);
+    toast.success('Test notification sent.');
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : String(error));
+  } finally {
+    testingAlerts.value.delete(id);
+    try { deliveries.value = (await adminApi.deliveryStatuses()).channels; }
+    catch { toast.error('Unable to refresh delivery status.'); }
+  }
+}
+
+function formatDeliveryDate(value: string | null | undefined): string {
+  return value ? new Date(value).toLocaleString() : '—';
 }
 
 async function saveAlert(alert: AlertChannel): Promise<void> {
@@ -312,7 +335,7 @@ onMounted(() => { void refresh(); });
             <div class="flex items-center justify-between">
               <div>
                 <CardTitle>Alert channels</CardTitle>
-                <CardDescription>Destinations for incident and SSL notifications.</CardDescription>
+                <CardDescription>Destinations for incident and SSL notifications. Delivery status is shown since the last server restart.</CardDescription>
               </div>
               <Button size="sm" class="gap-2" @click="openNewAlert">
                 <Plus class="w-4 h-4" /> New alert
@@ -326,19 +349,31 @@ onMounted(() => { void refresh(); });
                   <TableHead>Name</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead>Description</TableHead>
+                  <TableHead>Delivery</TableHead>
                   <TableHead class="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 <TableRow v-if="config.alerts.length === 0">
-                  <TableCell colspan="4" class="text-center text-muted-foreground py-10">No alert channels configured yet.</TableCell>
+                  <TableCell colspan="5" class="text-center text-muted-foreground py-10">No alert channels configured yet.</TableCell>
                 </TableRow>
                 <TableRow v-for="alert in config.alerts" :key="alert.id">
                   <TableCell class="font-medium">{{ alert.name }}</TableCell>
                   <TableCell><Badge variant="outline">{{ alert.type }}</Badge></TableCell>
                   <TableCell class="text-muted-foreground">{{ alert.description || '—' }}</TableCell>
+                  <TableCell class="text-xs">
+                    <p v-if="deliveries[alert.id]?.pending">Sending…</p>
+                    <p v-else-if="deliveries[alert.id]?.error" class="text-destructive">{{ deliveries[alert.id]?.error }}</p>
+                    <p v-else-if="deliveries[alert.id]?.lastSuccessAt" class="text-green-600 dark:text-green-400">Delivered</p>
+                    <p v-else class="text-muted-foreground">No delivery yet</p>
+                    <p v-if="deliveries[alert.id]" class="text-muted-foreground">Last success: {{ formatDeliveryDate(deliveries[alert.id]?.lastSuccessAt) }}</p>
+                    <p v-if="deliveries[alert.id]" class="text-muted-foreground">Last attempt: {{ formatDeliveryDate(deliveries[alert.id]?.lastAttemptAt) }}</p>
+                  </TableCell>
                   <TableCell class="text-right">
                     <div class="flex items-center justify-end gap-1">
+                      <Button variant="outline" size="sm" :disabled="testingAlerts.has(alert.id)" @click="testAlert(alert.id)">
+                        <Send class="mr-1 h-3.5 w-3.5" /> {{ testingAlerts.has(alert.id) ? 'Sending…' : 'Send test' }}
+                      </Button>
                       <Button variant="ghost" size="icon" title="Edit" @click="openEditAlert(alert)">
                         <Pencil class="w-4 h-4" />
                       </Button>

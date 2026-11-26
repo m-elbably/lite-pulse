@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from 'node:util';
 import { runHttpCheck } from './checkers/http';
 import { runTcpCheck } from './checkers/tcp';
 import { checkSslExpiry } from './checkers/ssl';
@@ -6,143 +7,86 @@ import { handleCheckResult } from './engine';
 import { bus } from './bus';
 import { logger } from '../shared/logger';
 import { isPaused } from './paused';
-import { setSslResult } from './ssl-status';
+import { clearSslResult, setSslResult } from './ssl-status';
 import type { ValidatedServiceConfig } from '../config/schemas';
 
-type IntervalMap = Map<string, ReturnType<typeof setInterval>>;
-type TimeoutMap = Map<string, ReturnType<typeof setTimeout>>;
+interface Job {
+  service: ValidatedServiceConfig;
+  stopped: boolean;
+  timer?: ReturnType<typeof setInterval>;
+  sslTimer?: ReturnType<typeof setInterval>;
+  check?: Promise<void>;
+  sslCheck?: Promise<void>;
+}
+const jobs = new Map<string, Job>();
 
-const timers: IntervalMap = new Map();
-const sslIntervals: IntervalMap = new Map();
-const sslStartupTimeouts: TimeoutMap = new Map();
-let currentServices: ValidatedServiceConfig[] = [];
-
-// ── Uptime check ─────────────────────────────────────────────────────────────
-
-async function runCheck(service: ValidatedServiceConfig): Promise<void> {
-  if (isPaused(service.id)) {
-    logger.debug({ serviceId: service.id }, 'Check skipped — service paused');
-    return;
-  }
-
+async function runCheck(job: Job): Promise<void> {
+  const service = job.service;
+  if (job.stopped || isPaused(service.id)) return;
   try {
-    const result = service.type === 'http'
-      ? await runHttpCheck(service)
-      : await runTcpCheck(service);
-
+    const result = service.type === 'http' ? await runHttpCheck(service) : await runTcpCheck(service);
+    if (job.stopped || isPaused(service.id)) return;
     await insertCheckResult(result);
-    bus.emit('check.completed', result);
+    if (job.stopped || isPaused(service.id)) return;
     await handleCheckResult(result, service);
-
-    logger.debug({ serviceId: service.id, status: result.status, ms: result.responseTime }, 'Check done');
+    bus.emit('check.completed', result);
   } catch (err: unknown) {
     logger.error({ serviceId: service.id, err: err instanceof Error ? err.message : String(err) }, 'Check failed unexpectedly');
   }
 }
 
-// ── SSL expiry check ─────────────────────────────────────────────────────────
-
-/** Check once and emit a warning if cert expires within the configured threshold. */
-async function runSslCheck(service: ValidatedServiceConfig): Promise<void> {
-  if (!service.url || !service.sslExpiryWarningDays || isPaused(service.id)) {
-    return;
-  }
-
+async function runSslCheck(job: Job): Promise<void> {
+  const service = job.service;
+  if (!service.url || !service.sslExpiryWarningDays || job.stopped || isPaused(service.id)) return;
   try {
     const result = await checkSslExpiry(service.id, service.url);
-    setSslResult(result); // always persist so the dashboard can show current SSL status
-
+    if (job.stopped || isPaused(service.id)) return;
+    setSslResult(result);
     if (result.error) {
       logger.warn({ serviceId: service.id, err: result.error }, 'SSL check error');
-      return;
-    }
-
-    logger.debug({ serviceId: service.id, daysRemaining: result.daysRemaining }, 'SSL check done');
-
-    if (result.daysRemaining <= service.sslExpiryWarningDays) {
+    } else if (result.daysRemaining <= service.sslExpiryWarningDays) {
       bus.emit('ssl.expiry.warning', result);
-      logger.warn({ serviceId: service.id, daysRemaining: result.daysRemaining }, 'SSL expiry warning emitted');
     }
   } catch (err: unknown) {
     logger.error({ serviceId: service.id, err: err instanceof Error ? err.message : String(err) }, 'SSL check failed');
   }
 }
 
-// ── Timer management ─────────────────────────────────────────────────────────
-
-function startTimer(service: ValidatedServiceConfig): void {
-  stopTimer(service.id);
-  stopSslTimer(service.id);
-
-  void runCheck(service);
-  timers.set(service.id, setInterval(() => void runCheck(service), service.interval * 1000));
-
-  if (service.sslExpiryWarningDays && service.url) {
-    void runSslCheck(service);
-
-    const startupTimeout = setTimeout(() => {
-      sslStartupTimeouts.delete(service.id);
-      sslIntervals.set(service.id, setInterval(() => void runSslCheck(service), 24 * 60 * 60 * 1000));
-    }, 0);
-
-    sslStartupTimeouts.set(service.id, startupTimeout);
-  }
+function triggerCheck(job: Job): void {
+  if (!job.check) job.check = runCheck(job).finally(() => { job.check = undefined; });
 }
 
-function stopTimer(serviceId: string): void {
-  const timer = timers.get(serviceId);
-  if (timer) {
-    clearInterval(timer);
-    timers.delete(serviceId);
-  }
+function triggerSslCheck(job: Job): void {
+  if (!job.sslCheck) job.sslCheck = runSslCheck(job).finally(() => { job.sslCheck = undefined; });
 }
 
-function stopSslTimer(serviceId: string): void {
-  const startupTimeout = sslStartupTimeouts.get(serviceId);
-  if (startupTimeout) {
-    clearTimeout(startupTimeout);
-    sslStartupTimeouts.delete(serviceId);
+export async function updateScheduler(services: ValidatedServiceConfig[]): Promise<void> {
+  const next = new Map(services.map(service => [service.id, service]));
+  const stopping: Job[] = [];
+  for (const [id, job] of jobs) {
+    if (isDeepStrictEqual(job.service, next.get(id))) continue;
+    job.stopped = true;
+    clearInterval(job.timer);
+    clearInterval(job.sslTimer);
+    jobs.delete(id);
+    clearSslResult(id);
+    stopping.push(job);
   }
-
-  const interval = sslIntervals.get(serviceId);
-  if (interval) {
-    clearInterval(interval);
-    sslIntervals.delete(serviceId);
-  }
-}
-
-// ── Public API ────────────────────────────────────────────────────────────────
-
-export function initScheduler(services: ValidatedServiceConfig[]): void {
-  currentServices = services;
+  // Drain processing before callers remove runtime state or replace a service.
+  await Promise.all(stopping.flatMap(job => [job.check, job.sslCheck]));
   for (const service of services) {
-    startTimer(service);
-  }
-  logger.info({ count: services.length }, 'Scheduler started');
-}
-
-export function updateScheduler(newServices: ValidatedServiceConfig[]): void {
-  const oldIds = new Set(currentServices.map(service => service.id));
-  const newIds = new Set(newServices.map(service => service.id));
-
-  for (const id of oldIds) {
-    if (!newIds.has(id)) {
-      stopTimer(id);
-      stopSslTimer(id);
+    if (jobs.has(service.id)) continue;
+    const job: Job = { service, stopped: false };
+    jobs.set(service.id, job);
+    job.timer = setInterval(() => triggerCheck(job), service.interval * 1000);
+    triggerCheck(job);
+    if (service.url && service.sslExpiryWarningDays) {
+      job.sslTimer = setInterval(() => triggerSslCheck(job), 24 * 60 * 60 * 1000);
+      triggerSslCheck(job);
     }
   }
-
-  for (const service of newServices) {
-    startTimer(service);
-  }
-
-  currentServices = newServices;
-  logger.info({ count: newServices.length }, 'Scheduler updated');
+  logger.info({ count: services.length }, 'Scheduler updated');
 }
 
-export function stopAll(): void {
-  for (const id of timers.keys()) {
-    stopTimer(id);
-    stopSslTimer(id);
-  }
-}
+export const initScheduler = updateScheduler;
+export async function stopAll(): Promise<void> { await updateScheduler([]); }

@@ -32,7 +32,6 @@ function createEmptyService(): ServiceConfig {
     interval: 60,
     timeout: 10,
     method: 'GET',
-    expectedStatus: 200,
     failureThreshold: 3,
     successThreshold: 2,
     alertChannels: [],
@@ -70,7 +69,8 @@ watch(
     showRequestOptions.value = !!form.value.headers
       || !!form.value.sslExpiryWarningDays
       || (form.value.method !== undefined && form.value.method !== 'GET')
-      || (form.value.expectedStatus !== undefined && form.value.expectedStatus !== 200);
+      || form.value.expectedStatus !== undefined
+      || !!form.value.expectedKeyword;
     showMaintenanceOptions.value = !!form.value.maintenanceWindows.length;
   },
   { immediate: true },
@@ -113,11 +113,16 @@ function submit(): void {
 
     if (isHttp.value) {
       next.headers = parseHeaders(headersText.value);
+      // Cleared number inputs yield an empty string; omit them instead.
+      if (typeof next.expectedStatus !== 'number') next.expectedStatus = undefined;
+      if (typeof next.sslExpiryWarningDays !== 'number') next.sslExpiryWarningDays = undefined;
+      next.expectedKeyword = next.expectedKeyword?.trim() || undefined;
     } else {
       next.headers = undefined;
       next.url = undefined;
       next.method = undefined;
       next.expectedStatus = undefined;
+      next.expectedKeyword = undefined;
       next.sslExpiryWarningDays = undefined;
     }
     error.value = '';
@@ -201,7 +206,7 @@ function submit(): void {
           <div class="space-y-1.5">
             <Label for="service-cooldown-expanded">Alert cooldown (min)</Label>
             <Input id="service-cooldown-expanded" v-model.number="form.alertCooldownMinutes" min="0" type="number" />
-            <p class="text-xs text-muted-foreground">Prevents repeated notifications while a service stays down.</p>
+            <p class="text-xs text-muted-foreground">Limits new outage alerts while a service flaps. Recovery alerts still send.</p>
           </div>
 
           <div class="space-y-1.5">
@@ -241,7 +246,13 @@ function submit(): void {
           </div>
           <div class="space-y-1.5">
             <Label for="service-status">Expected status</Label>
-            <Input id="service-status" v-model.number="form.expectedStatus" min="100" max="599" type="number" />
+            <Input id="service-status" v-model.number="form.expectedStatus" min="100" max="599" type="number" placeholder="Any 2xx" />
+            <p class="text-xs text-muted-foreground">Leave empty to accept any 2xx response.</p>
+          </div>
+          <div class="space-y-1.5 md:col-span-2">
+            <Label for="service-keyword">Response must contain</Label>
+            <Input id="service-keyword" v-model="form.expectedKeyword" maxlength="200" placeholder="e.g. &quot;status&quot;:&quot;ok&quot;" />
+            <p class="text-xs text-muted-foreground">Optional. The check fails when the response body does not include this text.</p>
           </div>
           <div class="space-y-1.5 md:col-span-2">
             <Label for="service-ssl">SSL expiry warning days</Label>

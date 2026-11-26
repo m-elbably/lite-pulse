@@ -1,29 +1,17 @@
 import type { MaintenanceWindow } from '../shared/types';
 
-/**
- * Returns true if the given Date falls inside any of the maintenance windows.
- *
- * Window matching:
- *  - weekdays: if defined, only matches on those day-of-week values (0=Sun … 6=Sat).
- *  - startHour / startMinute: local time the window begins.
- *  - durationMinutes: how long the window lasts.
- */
+/** Windows use server-local time; weekdays identify the day the window starts. */
 export function isInMaintenance(windows: MaintenanceWindow[], now = new Date()): boolean {
-  const dayOfWeek = now.getDay();        // 0–6
-  const nowMinutes = now.getHours() * 60 + now.getMinutes();
-
-  for (const w of windows) {
-    if (w.weekdays && !w.weekdays.includes(dayOfWeek)) continue;
-
-    const startMinutes = w.startHour * 60 + (w.startMinute ?? 0);
-    const endMinutes = startMinutes + w.durationMinutes;
-
-    // Handle windows that wrap past midnight
-    if (endMinutes <= 1440) {
-      if (nowMinutes >= startMinutes && nowMinutes < endMinutes) return true;
-    } else {
-      // Wraps past midnight — two segments: [start, 1440) and [0, end - 1440)
-      if (nowMinutes >= startMinutes || nowMinutes < endMinutes - 1440) return true;
+  for (const window of windows) {
+    // Include earlier starts for windows lasting more than one day.
+    const days = Math.ceil(window.durationMinutes / 1440) + 1;
+    for (let daysAgo = 0; daysAgo <= days; daysAgo++) {
+      const start = new Date(now);
+      start.setDate(start.getDate() - daysAgo);
+      start.setHours(window.startHour, window.startMinute ?? 0, 0, 0);
+      if (window.weekdays && !window.weekdays.includes(start.getDay())) continue;
+      const elapsed = now.getTime() - start.getTime();
+      if (elapsed >= 0 && elapsed < window.durationMinutes * 60_000) return true;
     }
   }
   return false;

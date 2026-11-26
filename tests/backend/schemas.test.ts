@@ -22,7 +22,7 @@ describe('ServiceConfigSchema', () => {
     const result = ServiceConfigSchema.parse(base);
     expect(result.id).toBe('my-api');
     expect(result.method).toBe('GET');
-    expect(result.expectedStatus).toBe(200);
+    expect(result.expectedStatus).toBeUndefined(); // any 2xx
     expect(result.maintenanceWindows).toEqual([]);
     expect(result.alertCooldownMinutes).toBe(0);
   });

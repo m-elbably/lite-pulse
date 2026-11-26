@@ -107,6 +107,7 @@ function finalizeService(service: ValidatedServiceConfigInput, serviceId?: strin
     ...parsed,
     id: nextId || randomUUID(),
     name: parsed.name.trim(),
+    paused: false,
   };
 }
 
@@ -160,7 +161,7 @@ export async function updateService(serviceId: string, service: ValidatedService
       throw new ConfigStoreError(`Service '${serviceId}' not found`, 404, 'SERVICE_NOT_FOUND');
     }
 
-    const nextService = finalizeService(service, serviceId);
+    const nextService = { ...finalizeService(service, serviceId), paused: config.services[index]?.paused ?? false };
     const nextServices = [...config.services];
     nextServices[index] = nextService;
 

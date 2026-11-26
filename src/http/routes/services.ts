@@ -1,5 +1,7 @@
 import { Hono } from 'hono';
+import { setServicePaused } from '../../db/repos';
 import { pauseService, resumeService, isPaused } from '../../monitoring/paused';
+import { closeOpenIncident } from '../../monitoring/engine';
 import type { ValidatedServiceConfig } from '../../config/schemas';
 
 let services: ValidatedServiceConfig[] = [];
@@ -19,20 +21,23 @@ servicesRoute.get('/', (c) => {
   return c.json({ services: list });
 });
 
-servicesRoute.post('/:id/pause', (c) => {
+servicesRoute.post('/:id/pause', async (c) => {
   const id = c.req.param('id');
   if (!services.find(s => s.id === id)) {
 	return c.json({ error: `Service '${id}' not found` }, 404);
   }
+  await setServicePaused(id, true);
   pauseService(id);
+  await closeOpenIncident(id);
   return c.json({ id, paused: true });
 });
 
-servicesRoute.post('/:id/resume', (c) => {
+servicesRoute.post('/:id/resume', async (c) => {
   const id = c.req.param('id');
   if (!services.find(s => s.id === id)) {
 	return c.json({ error: `Service '${id}' not found` }, 404);
   }
+  await setServicePaused(id, false);
   resumeService(id);
   return c.json({ id, paused: false });
 });

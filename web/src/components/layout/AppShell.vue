@@ -9,12 +9,11 @@ import { useTheme } from '@/composables/useTheme.ts';
 import { useAuth } from '@/composables/useAuth.ts';
 import { toast } from 'vue-sonner';
 
-const { toggleTheme } = useTheme();
+const { isDark, toggleTheme } = useTheme();
 const { authState, logout } = useAuth();
 const router = useRouter();
 const route = useRoute();
 
-const isDark = computed(() => document.documentElement.classList.contains('dark'));
 const activeTab = computed(() => (route.path === '/admin' ? 'admin' : 'dashboard'));
 
 async function handleLogout() {

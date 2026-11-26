@@ -16,7 +16,7 @@ export const app = new Hono();
 
 app.use('*', secureHeaders());
 
-const allowedOrigin = process.env.CORS_ORIGIN ?? '*';
+const allowedOrigin = process.env.CORS_ORIGIN ?? 'http://localhost:5173';
 app.use('/api/*', cors({ origin: allowedOrigin, credentials: true }));
 
 app.route('/api/auth', authRoute);
@@ -42,7 +42,8 @@ export function updateApiServices(services: ValidatedServiceConfig[]) {
 }
 
 export function startServer(port: number) {
-  logger.info({ port }, 'HTTP server starting');
-  return Bun.serve({ fetch: app.fetch, port });
+  const server = Bun.serve({ fetch: app.fetch, port });
+  logger.info({ url: server.url.href }, `HTTP server listening on ${server.url.href}`);
+  return server;
 }
 

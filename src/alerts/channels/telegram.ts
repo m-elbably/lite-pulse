@@ -5,15 +5,24 @@ import type { SslCheckResult } from '../../shared/types';
 const TELEGRAM_API = 'https://api.telegram.org';
 async function sendMessage(botToken: string, chatId: string, text: string): Promise<void> {
   const url = `${TELEGRAM_API}/bot${botToken}/sendMessage`;
-  const res = await fetch(url, {
-method: 'POST',
-headers: { 'Content-Type': 'application/json' },
-body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML' }),
-  });
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text }),
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch (error) {
+    // Network errors can echo the request URL, which embeds the bot token.
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(message.replaceAll(botToken, '<redacted>'));
+  }
   if (!res.ok) {
 const body = await res.text();
 throw new Error(`Telegram API error ${res.status}: ${body}`);
   }
+  await res.body?.cancel();
 }
 export async function sendTelegramAlert(
   channel: ValidatedAlertChannel,
@@ -24,8 +33,8 @@ export async function sendTelegramAlert(
   const isDown = event === 'incident.opened';
   const emoji = isDown ? '🔴' : '✅';
   const lines = [
-`${emoji} <b>${isDown ? 'DOWN' : 'RESOLVED'}: ${serviceName}</b>`,
-`Incident: <code>${incident.id}</code>`,
+`${emoji} ${isDown ? 'DOWN' : 'RESOLVED'}: ${serviceName}`,
+`Incident: ${incident.id}`,
 `Started: ${incident.openedAt.toISOString()}`,
 isDown
   ? `Cause: ${incident.cause}`
@@ -40,10 +49,10 @@ export async function sendTelegramSslWarning(
   serviceName: string,
 ): Promise<void> {
   const text = [
-`🔐 <b>SSL Certificate Expiry Warning: ${serviceName}</b>`,
-`Host: <code>${result.hostname}</code>`,
+`🔐 SSL Certificate Expiry Warning: ${serviceName}`,
+`Host: ${result.hostname}`,
 `Expires: ${result.expiresAt.toISOString()}`,
-`Days remaining: <b>${result.daysRemaining}</b>`,
+`Days remaining: ${result.daysRemaining}`,
   ].join('\n');
   await sendMessage(channel.botToken!, channel.chatId!, text);
   logger.info({ channel: channel.id, serviceName }, 'Telegram SSL warning sent');

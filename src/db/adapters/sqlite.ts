@@ -14,9 +14,7 @@ interface CheckResultRow {
   httpStatus: number | null;
 }
 
-interface StatusRow {
-  status: 'up' | 'down';
-}
+interface UptimeRow { total: number; up: number | null; }
 
 interface CountRow {
   n: number;
@@ -44,12 +42,14 @@ interface ServiceConfigRow {
   method: string | null;
   headers: string | null;
   expectedStatus: number | null;
+  expectedKeyword: string | null;
   failureThreshold: number;
   successThreshold: number;
   alertChannels: string;
   sslExpiryWarningDays: number | null;
   maintenanceWindows: string;
   alertCooldownMinutes: number;
+  paused: number;
 }
 
 interface AlertChannelRow {
@@ -78,6 +78,10 @@ export class SqliteAdapter implements DbAdapter {
 	this.db.exec('PRAGMA journal_mode = WAL;');
 	this.db.exec('PRAGMA foreign_keys = ON;');
 	logger.info({ path: this.path }, 'Connected to SQLite');
+  }
+
+  async close(): Promise<void> {
+	this.db.close();
   }
 
   async ensureSchema(): Promise<void> {
@@ -120,12 +124,14 @@ export class SqliteAdapter implements DbAdapter {
 		method               TEXT,
 		headers              TEXT,
 		expectedStatus       INTEGER,
+		expectedKeyword      TEXT,
 		failureThreshold     INTEGER NOT NULL,
 		successThreshold     INTEGER NOT NULL,
 		alertChannels        TEXT NOT NULL,
 		sslExpiryWarningDays INTEGER,
 		maintenanceWindows   TEXT NOT NULL,
-		alertCooldownMinutes INTEGER NOT NULL DEFAULT 0
+		alertCooldownMinutes INTEGER NOT NULL DEFAULT 0,
+        paused INTEGER NOT NULL DEFAULT 0
 	  );
 	  CREATE UNIQUE INDEX IF NOT EXISTS idx_services_name_unique
 		ON services(lower(trim(name)));
@@ -145,25 +151,28 @@ export class SqliteAdapter implements DbAdapter {
 	  CREATE UNIQUE INDEX IF NOT EXISTS idx_alerts_name_unique
 		ON alerts(lower(trim(name)));
 	`);
+    const columns = this.db.prepare('PRAGMA table_info(services)').all() as Array<{ name: string }>;
+    if (!columns.some(column => column.name === 'paused')) {
+      this.db.exec('ALTER TABLE services ADD COLUMN paused INTEGER NOT NULL DEFAULT 0');
+    }
+    if (!columns.some(column => column.name === 'expectedKeyword')) {
+      this.db.exec('ALTER TABLE services ADD COLUMN expectedKeyword TEXT');
+    }
 	logger.info('SQLite schema ensured');
   }
 
   async insertCheckResult(result: CheckResult): Promise<void> {
-	try {
-	  this.db.prepare(`
+	this.db.prepare(`
 		INSERT INTO check_results (serviceId, status, responseTime, checkedAt, error, httpStatus)
 		VALUES (?, ?, ?, ?, ?, ?)
-	  `).run(
+	`).run(
 		result.serviceId,
 		result.status,
 		result.responseTime,
 		result.checkedAt.getTime(),
 		result.error ?? null,
 		result.httpStatus ?? null,
-	  );
-	} catch (err: unknown) {
-	  logger.error({ err: err instanceof Error ? err.message : String(err) }, 'Failed to insert check result');
-	}
+	);
   }
 
   async getRecentResults(serviceId: string, limit: number): Promise<CheckResult[]> {
@@ -183,23 +192,19 @@ export class SqliteAdapter implements DbAdapter {
 	}));
   }
 
-  async getUptime24h(serviceId: string): Promise<number> {
+  async getUptime24h(serviceId: string): Promise<number | null> {
 	const since = Date.now() - 24 * 60 * 60 * 1000;
-	const rows = this.db.prepare(`
-	  SELECT status FROM check_results WHERE serviceId = ? AND checkedAt >= ?
-	`).all(serviceId, since) as StatusRow[];
-
-	if (rows.length === 0) {
-	  return 100;
-	}
-
-	const up = rows.filter(row => row.status === 'up').length;
-	return Math.round((up / rows.length) * 10000) / 100;
+    const row = this.db.prepare(`
+      SELECT COUNT(*) AS total, SUM(CASE WHEN status = 'up' THEN 1 ELSE 0 END) AS up
+      FROM check_results WHERE serviceId = ? AND checkedAt >= ?
+    `).get(serviceId, since) as UptimeRow;
+    return row.total === 0 ? null : Math.round(((row.up ?? 0) / row.total) * 10000) / 100;
   }
 
   async deleteOldResults(retentionDays: number): Promise<void> {
 	const cutoff = Date.now() - retentionDays * 86400 * 1000;
 	this.db.prepare('DELETE FROM check_results WHERE checkedAt < ?').run(cutoff);
+	this.db.prepare("DELETE FROM incidents WHERE status = 'resolved' AND resolvedAt < ?").run(cutoff);
   }
 
   async insertIncident(incident: Incident): Promise<string> {
@@ -262,8 +267,8 @@ export class SqliteAdapter implements DbAdapter {
   async listServices(): Promise<ValidatedServiceConfig[]> {
 	const rows = this.db.prepare(`
 	  SELECT id, name, type, url, host, port, interval, timeout, method, headers,
-			 expectedStatus, failureThreshold, successThreshold, alertChannels,
-			 sslExpiryWarningDays, maintenanceWindows, alertCooldownMinutes
+			 expectedStatus, expectedKeyword, failureThreshold, successThreshold, alertChannels,
+			 sslExpiryWarningDays, maintenanceWindows, alertCooldownMinutes, paused
 	  FROM services
 	  ORDER BY name COLLATE NOCASE, id
 	`).all() as ServiceConfigRow[];
@@ -275,9 +280,9 @@ export class SqliteAdapter implements DbAdapter {
 	this.db.prepare(`
 	  INSERT INTO services (
 		id, name, type, url, host, port, interval, timeout, method, headers,
-		expectedStatus, failureThreshold, successThreshold, alertChannels,
+		expectedStatus, expectedKeyword, failureThreshold, successThreshold, alertChannels,
 		sslExpiryWarningDays, maintenanceWindows, alertCooldownMinutes
-	  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`).run(
 	  service.id,
 	  service.name,
@@ -290,6 +295,7 @@ export class SqliteAdapter implements DbAdapter {
 	  service.method ?? null,
 	  service.headers ? JSON.stringify(service.headers) : null,
 	  service.expectedStatus ?? null,
+	  service.expectedKeyword ?? null,
 	  service.failureThreshold,
 	  service.successThreshold,
 	  JSON.stringify(service.alertChannels ?? []),
@@ -303,7 +309,7 @@ export class SqliteAdapter implements DbAdapter {
 	this.db.prepare(`
 	  UPDATE services
 	  SET name = ?, type = ?, url = ?, host = ?, port = ?, interval = ?, timeout = ?,
-		  method = ?, headers = ?, expectedStatus = ?, failureThreshold = ?,
+		  method = ?, headers = ?, expectedStatus = ?, expectedKeyword = ?, failureThreshold = ?,
 		  successThreshold = ?, alertChannels = ?, sslExpiryWarningDays = ?,
 		  maintenanceWindows = ?, alertCooldownMinutes = ?
 	  WHERE id = ?
@@ -318,6 +324,7 @@ export class SqliteAdapter implements DbAdapter {
 	  service.method ?? null,
 	  service.headers ? JSON.stringify(service.headers) : null,
 	  service.expectedStatus ?? null,
+	  service.expectedKeyword ?? null,
 	  service.failureThreshold,
 	  service.successThreshold,
 	  JSON.stringify(service.alertChannels ?? []),
@@ -326,6 +333,10 @@ export class SqliteAdapter implements DbAdapter {
 	  service.alertCooldownMinutes ?? 0,
 	  serviceId,
 	);
+  }
+
+  async setServicePaused(serviceId: string, paused: boolean): Promise<void> {
+    this.db.prepare('UPDATE services SET paused = ? WHERE id = ?').run(Number(paused), serviceId);
   }
 
   async deleteService(serviceId: string): Promise<void> {
@@ -396,13 +407,15 @@ export class SqliteAdapter implements DbAdapter {
 	  timeout: row.timeout,
 	  method: row.method ?? 'GET',
 	  headers: row.headers ? JSON.parse(row.headers) as Record<string, string> : undefined,
-	  expectedStatus: row.expectedStatus ?? 200,
+	  expectedStatus: row.expectedStatus ?? undefined,
+	  expectedKeyword: row.expectedKeyword ?? undefined,
 	  failureThreshold: row.failureThreshold,
 	  successThreshold: row.successThreshold,
 	  alertChannels: JSON.parse(row.alertChannels) as string[],
 	  sslExpiryWarningDays: row.sslExpiryWarningDays ?? undefined,
 	  maintenanceWindows: JSON.parse(row.maintenanceWindows) as ValidatedServiceConfig['maintenanceWindows'],
 	  alertCooldownMinutes: row.alertCooldownMinutes,
+      paused: !!row.paused,
 	};
   }
 

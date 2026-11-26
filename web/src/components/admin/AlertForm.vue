@@ -192,7 +192,7 @@ function submit(): void {
         <div class="space-y-1.5">
           <Label for="alert-method">Method</Label>
           <Select id="alert-method" v-model="form.method">
-            <option v-for="method in HTTP_METHOD_OPTIONS" :key="method" :value="method">{{ method }}</option>
+            <option v-for="method in HTTP_METHOD_OPTIONS.filter(method => !['GET', 'HEAD'].includes(method))" :key="method" :value="method">{{ method }}</option>
           </Select>
         </div>
       </div>

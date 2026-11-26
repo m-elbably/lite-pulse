@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { getDeliveryStatuses, testAlertChannel } from '../../alerts/dispatcher';
 import type { Context } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { AlertChannelInputSchema, ServiceConfigInputSchema } from '../../config/schemas';
@@ -115,3 +116,21 @@ adminRoute.delete('/alerts/:id', async c => {
 });
 
 
+
+adminRoute.get('/alerts/delivery', c => c.json({ channels: getDeliveryStatuses() }));
+
+adminRoute.post('/alerts/:id/test', async c => {
+  try {
+    const config = await listConfig();
+    const channel = config.alerts.find(channel => channel.id === c.req.param('id'));
+    if (!channel) return c.json(errorResponse('Alert channel not found', 'ALERT_NOT_FOUND'), 404);
+    try {
+      await testAlertChannel(channel);
+    } catch {
+      return c.json(errorResponse('Test delivery failed. See the channel delivery status for details.', 'DELIVERY_FAILED'), 502);
+    }
+    return c.json({ ok: true });
+  } catch (error) {
+    return handleRouteError(c, error);
+  }
+});

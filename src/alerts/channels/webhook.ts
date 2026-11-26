@@ -7,7 +7,9 @@ async function post(channel: ValidatedAlertChannel, payload: unknown): Promise<v
     method: channel.method ?? 'POST',
     headers: { 'Content-Type': 'application/json', ...channel.headers },
     body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(10_000),
   });
+  await response.body?.cancel();
   if (!response.ok) {
     throw new Error(`Webhook responded with HTTP ${response.status}`);
   }
