@@ -42,7 +42,8 @@ export function updateApiServices(services: ValidatedServiceConfig[]) {
 }
 
 export function startServer(port: number) {
-  logger.info({ port }, 'HTTP server starting');
-  return Bun.serve({ fetch: app.fetch, port });
+  const server = Bun.serve({ fetch: app.fetch, port });
+  logger.info({ url: server.url.href }, `HTTP server listening on ${server.url.href}`);
+  return server;
 }
 
