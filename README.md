@@ -108,7 +108,7 @@ LitePulse uses **session cookies** for authentication.
 
 > Sessions expire after seven days on the server and browser. Sessions are stored in memory, so restarting the server signs users out. HTTPS requests (including trusted proxy forwarding with `X-Forwarded-Proto: https`) receive Secure cookies.
 
-With only admin credentials configured, the private dashboard requires an admin login. With neither credential pair configured, the dashboard and admin console are open for local development.
+With only admin credentials configured, the private dashboard requires an admin login. With neither credential pair configured, the dashboard and admin console are open for local development. The server logs a warning (an error when `NODE_ENV=production`) whenever admin authentication is disabled, refuses to start while a password is still the example value `change-me`, and delays failed logins by 500 ms.
 
 ## Configuration
 
@@ -122,7 +122,7 @@ These are the main environment variables you will usually care about:
 | `ADMIN_USERNAME` / `ADMIN_PASSWORD` | — | Enables admin authentication |
 | `STATUS_USERNAME` / `STATUS_PASSWORD` | — | Enables dashboard authentication when the page is not public |
 | `PUBLIC_STATUS_PAGE` | `false` | Makes the dashboard publicly accessible |
-| `DATA_RETENTION_DAYS` | `30` | Retention period for historical check results |
+| `DATA_RETENTION_DAYS` | `30` | Retention for check results and resolved incidents; pruned at startup and daily |
 | `DB_ADAPTER` | `mongodb` | Storage backend: `mongodb` or `sqlite` |
 | `MONGODB_URI` | `mongodb://localhost:27017/lite-pulse` | MongoDB connection string |
 | `SQLITE_PATH` | `./uptime.db` | SQLite database file path |
@@ -130,7 +130,7 @@ These are the main environment variables you will usually care about:
 | `MONGO_CAPPED_SIZE_MB` | `256` | Size of the capped collection when enabled |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` | — | SMTP settings for email alerts |
 
-Existing SQLite databases receive an idempotent `paused` column addition during startup; existing services start unpaused. MongoDB stores the pause flag on each service.
+Existing SQLite databases receive idempotent `paused` and `expectedKeyword` column additions during startup; existing services start unpaused. MongoDB stores these fields on each service. On SIGTERM/SIGINT the server stops accepting requests, drains in-flight checks, and closes the database.
 
 For the full example, see [`.env.example`](.env.example).
 
@@ -143,7 +143,9 @@ Services and alert channels are stored in the configured database and can be cre
 - Up to **16** monitored services
 - HTTP and TCP checks
 - Configurable interval, timeout, failure threshold, and success threshold
-- Optional expected HTTP status code and custom headers
+- Any 2xx response counts as up by default; optionally require an exact status code
+- Optional response keyword: the check fails when the body does not contain it
+- Optional custom headers
 - Optional SSL expiry warnings for HTTPS services
 - Optional maintenance windows and alert cooldowns
 
@@ -157,7 +159,7 @@ Alert delivery is asynchronous and retried with exponential backoff. Webhook and
 
 Maintenance windows use server-local time, with selected weekdays identifying when a window starts; a window may cross midnight and last up to seven days. Incidents opened during maintenance are checked again after maintenance ends and notify once if still open. Suppressed notifications are held in memory, so this catch-up state resets on restart.
 
-Alert cooldown applies to new outage notifications across recoveries, limiting flapping. Recovery notifications still send. Paused services retain their last result but do not count as actively healthy. Overdue checks show unknown/stale status, and services without results show no uptime percentage.
+Alert cooldown applies to new outage notifications across recoveries, limiting flapping. Recovery notifications are sent only when the matching outage notification was sent. Pausing or deleting a service closes its open incident without a recovery notification. Paused services retain their last result but do not count as actively healthy. Overdue checks show unknown/stale status, and services without results show no uptime percentage.
 
 ## HTTP surface
 

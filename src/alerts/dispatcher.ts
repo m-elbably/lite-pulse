@@ -74,7 +74,12 @@ function getChannels(service: ValidatedServiceConfig): ValidatedAlertChannel[] {
 export async function dispatch(event: AlertEvent, incident: IdentifiedIncident): Promise<void> {
   const service = services.find(service => service.id === incident.serviceId);
   if (!service) return;
-  if (event === 'incident.resolved') suppressed.delete(service.id);
+  if (event === 'incident.resolved') {
+    const held = suppressed.get(service.id);
+    suppressed.delete(service.id);
+    // The outage alert was never delivered, so a recovery alert would be noise.
+    if (held?.id === incident.id) return;
+  }
   if (isInMaintenance(service.maintenanceWindows ?? []) || isPaused(service.id)
     || (event === 'incident.opened' && !canAlert(service.id, (service.alertCooldownMinutes ?? 0) * 60_000))) {
     if (event === 'incident.opened') suppressed.set(service.id, incident);

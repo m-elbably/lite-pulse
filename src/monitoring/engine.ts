@@ -7,15 +7,33 @@ import type { ValidatedServiceConfig } from '../config/schemas';
 
 const pending = new Map<string, Promise<void>>();
 
-export async function handleCheckResult(result: CheckResult, service: ValidatedServiceConfig): Promise<void> {
-  const previous = pending.get(result.serviceId) ?? Promise.resolve();
-  const next = previous.catch(() => {}).then(() => processCheckResult(result, service));
-  pending.set(result.serviceId, next);
+/** Serializes all incident transitions per service. */
+async function enqueue(serviceId: string, task: () => Promise<void>): Promise<void> {
+  const previous = pending.get(serviceId) ?? Promise.resolve();
+  const next = previous.catch(() => {}).then(task);
+  pending.set(serviceId, next);
   try {
     await next;
   } finally {
-    if (pending.get(result.serviceId) === next) pending.delete(result.serviceId);
+    if (pending.get(serviceId) === next) pending.delete(serviceId);
   }
+}
+
+export function handleCheckResult(result: CheckResult, service: ValidatedServiceConfig): Promise<void> {
+  return enqueue(result.serviceId, () => processCheckResult(result, service));
+}
+
+/** Closes a paused or deleted service's open incident without sending a recovery alert. */
+export function closeOpenIncident(serviceId: string): Promise<void> {
+  return enqueue(serviceId, async () => {
+    const incident = await getOpenIncident(serviceId);
+    if (incident) {
+      const resolvedAt = new Date();
+      await resolveIncident(incident.id, resolvedAt, resolvedAt.getTime() - incident.openedAt.getTime());
+      logger.info({ serviceId }, 'Incident closed because monitoring stopped');
+    }
+    setState(serviceId, { activeIncidentId: null, consecutiveFailures: 0, consecutiveSuccesses: 0 });
+  });
 }
 
 async function processCheckResult(
@@ -41,11 +59,12 @@ async function processCheckResult(
       if (incident) {
         const duration = resolvedAt.getTime() - incident.openedAt.getTime();
         await resolveIncident(incident.id, resolvedAt, duration);
-        setState(result.serviceId, { activeIncidentId: null });
         const resolved = { ...incident, status: 'resolved' as const, resolvedAt, duration };
         bus.emit('incident.resolved', resolved);
         logger.info({ serviceId: result.serviceId }, 'Incident resolved');
       }
+      // Clear even when the row is gone, otherwise no new incident could ever open.
+      setState(result.serviceId, { activeIncidentId: null });
     }
   } else {
     setState(result.serviceId, {

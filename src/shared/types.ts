@@ -10,7 +10,10 @@ export interface ServiceConfig {
   timeout: number;
   method?: string;
   headers?: Record<string, string>;
+  /** Exact status to require. Omit to accept any 2xx. */
   expectedStatus?: number;
+  /** Text the response body must contain. */
+  expectedKeyword?: string;
   failureThreshold: number;
   successThreshold: number;
   alertChannels?: string[];

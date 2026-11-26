@@ -7,6 +7,7 @@ export interface IncidentRow extends Incident {
 
 export interface DbAdapter {
   connect(): Promise<void>;
+  close(): Promise<void>;
   ensureSchema(): Promise<void>;
 
   insertCheckResult(result: CheckResult): Promise<void>;

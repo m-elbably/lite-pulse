@@ -4,6 +4,7 @@ import { Plus, Trash2, Clock } from 'lucide-vue-next';
 import Button from '@/components/ui/Button.vue';
 import Input from '@/components/ui/Input.vue';
 import Label from '@/components/ui/Label.vue';
+import { useAuth } from '@/composables/useAuth.ts';
 import type { MaintenanceWindow } from '../../types.ts';
 
 const props = defineProps<{ modelValue: MaintenanceWindow[] }>();
@@ -22,6 +23,10 @@ function removeWindow(index: number): void {
   emit('update:modelValue', windows.value.filter((_, i) => i !== index));
 }
 
+const { authState } = useAuth();
+// Windows are evaluated in the server's local time, which may differ from the browser's.
+const serverTimeZone = computed(() => authState.value?.serverTimeZone ?? 'server local time');
+
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 </script>
 
@@ -32,7 +37,7 @@ const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
         <Clock class="w-4 h-4 text-muted-foreground" />
         <div>
           <p class="text-sm font-medium leading-none">Maintenance windows</p>
-          <p class="text-xs text-muted-foreground mt-0.5">Alerts suppressed, checks still run</p>
+          <p class="text-xs text-muted-foreground mt-0.5">Alerts suppressed, checks still run · Times in {{ serverTimeZone }}</p>
         </div>
       </div>
       <Button variant="outline" size="sm" type="button" class="gap-1.5 h-8 text-xs" @click="addWindow">

@@ -63,6 +63,10 @@ export class MongoAdapter implements DbAdapter {
 	logger.info('Connected to MongoDB');
   }
 
+  async close(): Promise<void> {
+	await this.client.close();
+  }
+
   async ensureSchema(): Promise<void> {
 	const useCapped = process.env.MONGO_USE_CAPPED === 'true';
 	const cappedSizeMb = parseInt(process.env.MONGO_CAPPED_SIZE_MB ?? '256');
@@ -139,8 +143,9 @@ export class MongoAdapter implements DbAdapter {
   }
 
   async deleteOldResults(retentionDays: number): Promise<void> {
-	if (process.env.MONGO_USE_CAPPED === 'true') return;
 	const cutoff = new Date(Date.now() - retentionDays * 86400 * 1000);
+	await this.db.collection('incidents').deleteMany({ status: 'resolved', resolvedAt: { $lt: cutoff } });
+	if (process.env.MONGO_USE_CAPPED === 'true') return;
 	await this.db.collection('check_results').deleteMany({ checkedAt: { $lt: cutoff } });
   }
 
@@ -216,6 +221,7 @@ export class MongoAdapter implements DbAdapter {
 	  method: service.method,
 	  headers: service.headers,
 	  expectedStatus: service.expectedStatus,
+	  expectedKeyword: service.expectedKeyword,
 	  failureThreshold: service.failureThreshold,
 	  successThreshold: service.successThreshold,
 	  alertChannels: service.alertChannels,
@@ -241,6 +247,7 @@ export class MongoAdapter implements DbAdapter {
 		  method: service.method,
 		  headers: service.headers,
 		  expectedStatus: service.expectedStatus,
+		  expectedKeyword: service.expectedKeyword,
 		  failureThreshold: service.failureThreshold,
 		  successThreshold: service.successThreshold,
 		  alertChannels: service.alertChannels,

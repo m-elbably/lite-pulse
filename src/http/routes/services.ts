@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { setServicePaused } from '../../db/repos';
 import { pauseService, resumeService, isPaused } from '../../monitoring/paused';
+import { closeOpenIncident } from '../../monitoring/engine';
 import type { ValidatedServiceConfig } from '../../config/schemas';
 
 let services: ValidatedServiceConfig[] = [];
@@ -27,6 +28,7 @@ servicesRoute.post('/:id/pause', async (c) => {
   }
   await setServicePaused(id, true);
   pauseService(id);
+  await closeOpenIncident(id);
   return c.json({ id, paused: true });
 });
 

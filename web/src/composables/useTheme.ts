@@ -21,7 +21,7 @@ export function useTheme() {
   onBeforeUnmount(() => media?.removeEventListener('change', handleSystemTheme));
   onMounted(() => {
     const saved = localStorage.getItem('lp-theme') as Theme | null;
-    theme.value = saved ?? 'light';
+    theme.value = saved ?? 'system';
     applyTheme(theme.value);
 
     media = window.matchMedia('(prefers-color-scheme: dark)');

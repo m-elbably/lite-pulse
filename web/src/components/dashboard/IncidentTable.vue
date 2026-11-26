@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Button from '@/components/ui/Button.vue';
 import Badge from '@/components/ui/Badge.vue';
 import Card from '@/components/ui/Card.vue';
 import CardHeader from '@/components/ui/CardHeader.vue';
@@ -14,8 +15,11 @@ import TableCell from '@/components/ui/TableCell.vue';
 import type { IncidentItem } from '../../types.ts';
 
 defineProps<{
+  canLoadMore?: boolean;
+  loading?: boolean;
   incidents: IncidentItem[];
 }>();
+defineEmits<{ loadMore: [] }>();
 
 function formatDate(value: string | undefined): string {
   return value ? new Date(value).toLocaleString() : '—';
@@ -59,7 +63,7 @@ function formatDuration(duration: number | undefined, status: IncidentItem['stat
             <TableCell class="font-medium">{{ incident.serviceName ?? incident.serviceId }}</TableCell>
             <TableCell class="text-muted-foreground">{{ formatDate(incident.openedAt) }}</TableCell>
             <TableCell>{{ formatDuration(incident.duration, incident.status) }}</TableCell>
-            <TableCell class="text-muted-foreground">{{ incident.cause || '—' }}</TableCell>
+            <TableCell class="text-muted-foreground max-w-md"><span class="line-clamp-2 break-words" :title="incident.cause">{{ incident.cause || '—' }}</span></TableCell>
             <TableCell>
               <Badge :variant="incident.status === 'open' ? 'destructive' : 'success'">
                 {{ incident.status }}
@@ -68,6 +72,9 @@ function formatDuration(duration: number | undefined, status: IncidentItem['stat
           </TableRow>
         </TableBody>
       </Table>
+      <div v-if="canLoadMore" class="flex justify-center border-t border-border p-3">
+        <Button variant="outline" size="sm" :disabled="loading" @click="$emit('loadMore')">Load more incidents</Button>
+      </div>
     </CardContent>
   </Card>
 </template>

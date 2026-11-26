@@ -7,6 +7,7 @@ export interface AuthState {
   publicStatus: boolean;
   adminAuthEnabled: boolean;
   statusAuthEnabled: boolean;
+  serverTimeZone?: string;
 }
 
 const authState = ref<AuthState | null>(null);

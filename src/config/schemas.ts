@@ -17,7 +17,8 @@ const ServiceConfigShape = {
   timeout: z.number().int().min(1).max(30),
   method: z.string().trim().toUpperCase().refine(value => ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'].includes(value), 'Unsupported HTTP method').optional().default('GET'),
   headers: z.record(z.string(), z.string()).optional(),
-  expectedStatus: z.number().int().min(100).max(599).optional().default(200),
+  expectedStatus: z.number().int().min(100).max(599).optional(),
+  expectedKeyword: z.string().min(1).max(200).optional(),
   failureThreshold: z.number().int().min(1),
   successThreshold: z.number().int().min(1),
   alertChannels: z.array(z.string().min(1)).optional().default([]),
@@ -56,6 +57,10 @@ function refineServiceSchema<T extends z.ZodObject<z.ZodRawShape>>(schema: T) {
       const s = value as z.infer<typeof ServiceConfigBaseSchema>;
       return s.type !== 'tcp' || (!!s.host && !!s.port);
     }, { message: 'host and port required for tcp type' })
+    .refine((value) => {
+      const s = value as z.infer<typeof ServiceConfigBaseSchema>;
+      return !s.expectedKeyword || (s.type === 'http' && s.method !== 'HEAD');
+    }, { message: 'expectedKeyword requires an http service with a method that returns a body' })
     .refine(
       (value) => {
         const s = value as z.infer<typeof ServiceConfigBaseSchema>;

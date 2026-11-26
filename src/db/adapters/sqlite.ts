@@ -42,6 +42,7 @@ interface ServiceConfigRow {
   method: string | null;
   headers: string | null;
   expectedStatus: number | null;
+  expectedKeyword: string | null;
   failureThreshold: number;
   successThreshold: number;
   alertChannels: string;
@@ -77,6 +78,10 @@ export class SqliteAdapter implements DbAdapter {
 	this.db.exec('PRAGMA journal_mode = WAL;');
 	this.db.exec('PRAGMA foreign_keys = ON;');
 	logger.info({ path: this.path }, 'Connected to SQLite');
+  }
+
+  async close(): Promise<void> {
+	this.db.close();
   }
 
   async ensureSchema(): Promise<void> {
@@ -119,6 +124,7 @@ export class SqliteAdapter implements DbAdapter {
 		method               TEXT,
 		headers              TEXT,
 		expectedStatus       INTEGER,
+		expectedKeyword      TEXT,
 		failureThreshold     INTEGER NOT NULL,
 		successThreshold     INTEGER NOT NULL,
 		alertChannels        TEXT NOT NULL,
@@ -148,6 +154,9 @@ export class SqliteAdapter implements DbAdapter {
     const columns = this.db.prepare('PRAGMA table_info(services)').all() as Array<{ name: string }>;
     if (!columns.some(column => column.name === 'paused')) {
       this.db.exec('ALTER TABLE services ADD COLUMN paused INTEGER NOT NULL DEFAULT 0');
+    }
+    if (!columns.some(column => column.name === 'expectedKeyword')) {
+      this.db.exec('ALTER TABLE services ADD COLUMN expectedKeyword TEXT');
     }
 	logger.info('SQLite schema ensured');
   }
@@ -195,6 +204,7 @@ export class SqliteAdapter implements DbAdapter {
   async deleteOldResults(retentionDays: number): Promise<void> {
 	const cutoff = Date.now() - retentionDays * 86400 * 1000;
 	this.db.prepare('DELETE FROM check_results WHERE checkedAt < ?').run(cutoff);
+	this.db.prepare("DELETE FROM incidents WHERE status = 'resolved' AND resolvedAt < ?").run(cutoff);
   }
 
   async insertIncident(incident: Incident): Promise<string> {
@@ -257,7 +267,7 @@ export class SqliteAdapter implements DbAdapter {
   async listServices(): Promise<ValidatedServiceConfig[]> {
 	const rows = this.db.prepare(`
 	  SELECT id, name, type, url, host, port, interval, timeout, method, headers,
-			 expectedStatus, failureThreshold, successThreshold, alertChannels,
+			 expectedStatus, expectedKeyword, failureThreshold, successThreshold, alertChannels,
 			 sslExpiryWarningDays, maintenanceWindows, alertCooldownMinutes, paused
 	  FROM services
 	  ORDER BY name COLLATE NOCASE, id
@@ -270,9 +280,9 @@ export class SqliteAdapter implements DbAdapter {
 	this.db.prepare(`
 	  INSERT INTO services (
 		id, name, type, url, host, port, interval, timeout, method, headers,
-		expectedStatus, failureThreshold, successThreshold, alertChannels,
+		expectedStatus, expectedKeyword, failureThreshold, successThreshold, alertChannels,
 		sslExpiryWarningDays, maintenanceWindows, alertCooldownMinutes
-	  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`).run(
 	  service.id,
 	  service.name,
@@ -285,6 +295,7 @@ export class SqliteAdapter implements DbAdapter {
 	  service.method ?? null,
 	  service.headers ? JSON.stringify(service.headers) : null,
 	  service.expectedStatus ?? null,
+	  service.expectedKeyword ?? null,
 	  service.failureThreshold,
 	  service.successThreshold,
 	  JSON.stringify(service.alertChannels ?? []),
@@ -298,7 +309,7 @@ export class SqliteAdapter implements DbAdapter {
 	this.db.prepare(`
 	  UPDATE services
 	  SET name = ?, type = ?, url = ?, host = ?, port = ?, interval = ?, timeout = ?,
-		  method = ?, headers = ?, expectedStatus = ?, failureThreshold = ?,
+		  method = ?, headers = ?, expectedStatus = ?, expectedKeyword = ?, failureThreshold = ?,
 		  successThreshold = ?, alertChannels = ?, sslExpiryWarningDays = ?,
 		  maintenanceWindows = ?, alertCooldownMinutes = ?
 	  WHERE id = ?
@@ -313,6 +324,7 @@ export class SqliteAdapter implements DbAdapter {
 	  service.method ?? null,
 	  service.headers ? JSON.stringify(service.headers) : null,
 	  service.expectedStatus ?? null,
+	  service.expectedKeyword ?? null,
 	  service.failureThreshold,
 	  service.successThreshold,
 	  JSON.stringify(service.alertChannels ?? []),
@@ -395,7 +407,8 @@ export class SqliteAdapter implements DbAdapter {
 	  timeout: row.timeout,
 	  method: row.method ?? 'GET',
 	  headers: row.headers ? JSON.parse(row.headers) as Record<string, string> : undefined,
-	  expectedStatus: row.expectedStatus ?? 200,
+	  expectedStatus: row.expectedStatus ?? undefined,
+	  expectedKeyword: row.expectedKeyword ?? undefined,
 	  failureThreshold: row.failureThreshold,
 	  successThreshold: row.successThreshold,
 	  alertChannels: JSON.parse(row.alertChannels) as string[],

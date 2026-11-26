@@ -5,12 +5,19 @@ import type { SslCheckResult } from '../../shared/types';
 const TELEGRAM_API = 'https://api.telegram.org';
 async function sendMessage(botToken: string, chatId: string, text: string): Promise<void> {
   const url = `${TELEGRAM_API}/bot${botToken}/sendMessage`;
-  const res = await fetch(url, {
-method: 'POST',
-headers: { 'Content-Type': 'application/json' },
-body: JSON.stringify({ chat_id: chatId, text }),
-signal: AbortSignal.timeout(10_000),
-  });
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text }),
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch (error) {
+    // Network errors can echo the request URL, which embeds the bot token.
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(message.replaceAll(botToken, '<redacted>'));
+  }
   if (!res.ok) {
 const body = await res.text();
 throw new Error(`Telegram API error ${res.status}: ${body}`);

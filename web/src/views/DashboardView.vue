@@ -13,7 +13,10 @@ import CardDescription from '@/components/ui/CardDescription.vue';
 import CardContent from '@/components/ui/CardContent.vue';
 import { useDashboard } from '../composables/useDashboard.ts';
 
-const { countdown, errorMessage, incidentItems, isLoading, isOffline, isRefreshing, lastRefreshed, services, summary, refresh } = useDashboard();
+const {
+  countdown, errorMessage, incidentItems, isLoading, isOffline, isRefreshing, lastRefreshed, services, summary, refresh,
+  canLoadMoreIncidents, loadMoreIncidents,
+} = useDashboard();
 </script>
 
 <template>
@@ -33,14 +36,14 @@ const { countdown, errorMessage, incidentItems, isLoading, isOffline, isRefreshi
             </CardDescription>
           </div>
           <Button variant="outline" size="sm" class="gap-2 shrink-0" :disabled="isRefreshing" @click="refresh">
-            <RefreshCw class="w-3.5 h-3.5" />
+            <RefreshCw :class="['w-3.5 h-3.5', isRefreshing && 'animate-spin']" />
             Refresh
           </Button>
         </div>
       </CardHeader>
       <CardContent class="space-y-4">
         <StatusBanner :summary="summary" :loading="isLoading" :offline="isOffline" />
-        <SummaryBar :total="summary.total" :up="summary.up" :down="summary.down" />
+        <SummaryBar :summary="summary" />
       </CardContent>
     </Card>
 
@@ -61,7 +64,7 @@ const { countdown, errorMessage, incidentItems, isLoading, isOffline, isRefreshi
       </div>
     </div>
 
-    <IncidentTable :incidents="incidentItems" />
+    <IncidentTable :incidents="incidentItems" :can-load-more="canLoadMoreIncidents" :loading="isRefreshing" @load-more="loadMoreIncidents" />
   </div>
 </template>
 

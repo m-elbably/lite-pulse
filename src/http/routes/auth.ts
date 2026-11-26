@@ -19,7 +19,11 @@ for (const role of ['admin', 'status'] as const) {
     const parsed = CredentialsSchema.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) return c.json({ error: { message: 'Username and password must be non-empty strings' } }, 400);
     const token = (role === 'admin' ? loginAdmin : loginStatus)(parsed.data.username, parsed.data.password);
-    if (!token) return c.json({ error: { message: 'Invalid credentials' } }, 401);
+    if (!token) {
+      // ponytail: fixed delay slows brute force; add per-IP lockout if exposed publicly.
+      await Bun.sleep(500);
+      return c.json({ error: { message: 'Invalid credentials' } }, 401);
+    }
     setCookie(c, role === 'admin' ? ADMIN_COOKIE : STATUS_COOKIE, token, {
       httpOnly: true,
       sameSite: 'Lax',
@@ -49,5 +53,6 @@ authRoute.get('/me', c => {
   const publicStatus = isPublicStatusPage();
   const statusViewer = publicStatus || (!adminAuthEnabled && !statusAuthEnabled)
     || adminSession || (statusAuthEnabled && isStatusSession(getCookie(c, STATUS_COOKIE)));
-  return c.json({ admin, statusViewer, publicStatus, adminAuthEnabled, statusAuthEnabled });
+  const serverTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  return c.json({ admin, statusViewer, publicStatus, adminAuthEnabled, statusAuthEnabled, serverTimeZone });
 });

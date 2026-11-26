@@ -92,6 +92,12 @@ rawDb.exec('PRAGMA query_only=ON');
 await assert.rejects(sqlite.insertCheckResult(result), /readonly/);
 rawDb.exec('PRAGMA query_only=OFF');
 
+// A vanished incident row cannot leave the service stuck with no future incidents.
+setState(service.id, { activeIncidentId: 'missing-row' });
+await handleCheckResult({ ...result, status: 'up' }, service);
+assert.equal(getAllStates().find(state => state.serviceId === service.id)?.activeIncidentId, null);
+removeState(service.id);
+
 // Mongo propagates write errors and computes percentages from aggregate counts.
 const mongo = new MongoAdapter();
 Object.assign(mongo, { db: { collection: () => ({
@@ -133,7 +139,10 @@ try {
   assert.equal((await second.listServices())[0]?.paused, true);
   (second as unknown as { db: Database }).db.close();
 } finally { rmSync(temporary, { recursive: true }); setAdapter(sqlite); }
+// Pausing closes the open incident so it does not stay "open" forever.
+await sqlite.insertIncident({ serviceId: service.id, status: 'open', openedAt: new Date(), cause: 'down before pause' });
 await app.request(`/api/services/${service.id}/pause`, { method: 'POST' });
+assert.equal(await sqlite.getOpenIncident(service.id), null);
 assert.equal((await sqlite.listServices())[0]?.paused, true);
 assert.equal(isPaused(service.id), true);
 await app.request(`/api/services/${service.id}/resume`, { method: 'POST' });
@@ -215,6 +224,8 @@ assert.ok(getDeliveryStatuses()[channel.id]?.lastSuccessAt);
 await dispatch('incident.resolved', { ...incident, status: 'resolved', resolvedAt: new Date() });
 await dispatch('incident.opened', incident);
 assert.equal(sent, 2); // One outage and one recovery, no flapping outage notification.
+await dispatch('incident.resolved', { ...incident, status: 'resolved', resolvedAt: new Date() });
+assert.equal(sent, 2); // The outage alert was held by cooldown, so no orphan recovery alert.
 await testAlertChannel(channel);
 assert.equal(sent, 3);
 assert.ok(payload?.text.includes('test notification'));
@@ -224,6 +235,12 @@ assert.ok(getDeliveryStatuses()[webhook.id]?.lastSuccessAt);
 globalThis.fetch = (async () => new Response('unavailable', { status: 503 })) as unknown as typeof fetch;
 await assert.rejects(testAlertChannel(channel), /503/);
 assert.match(getDeliveryStatuses()[channel.id]?.error ?? '', /503/);
+// Network errors never leak the Telegram bot token into delivery status.
+const secretChannel = { ...channel, id: 'secret-telegram', botToken: 'SECRET-TOKEN-123' };
+globalThis.fetch = (async (url: RequestInfo | URL) => { throw new Error(`Unable to connect: ${String(url)}`); }) as unknown as typeof fetch;
+await assert.rejects(testAlertChannel(secretChannel), (error: Error) => !error.message.includes('SECRET-TOKEN-123'));
+assert.doesNotMatch(getDeliveryStatuses()[secretChannel.id]?.error ?? '', /SECRET-TOKEN-123/);
+globalThis.fetch = (async () => new Response('unavailable', { status: 503 })) as unknown as typeof fetch;
 assert.equal(getDeliveryStatuses()[channel.id]?.pending, false);
 assert.equal((await app.request('/api/admin/alerts/unknown/test', { method: 'POST' })).status, 404);
 await sqlite.createAlert(channel);

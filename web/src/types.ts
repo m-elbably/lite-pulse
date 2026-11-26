@@ -23,6 +23,7 @@ export interface DashboardService {
   status: ServiceStatus;
   responseTime: number | null;
   lastCheckedAt: string | null;
+  lastError: string | null;
   uptime24h: number | null;
   stale: boolean;
   paused: boolean;
@@ -80,6 +81,7 @@ export interface ServiceConfig {
   method?: string;
   headers?: Record<string, string>;
   expectedStatus?: number;
+  expectedKeyword?: string;
   failureThreshold: number;
   successThreshold: number;
   alertChannels: string[];

@@ -30,6 +30,7 @@ statusRoute.get('/', async (c) => {
       stale,
 	  responseTime: last?.responseTime ?? null,
 	  lastCheckedAt: last?.checkedAt ?? null,
+	  lastError: last?.status === 'down' ? last.error ?? null : null,
 	  uptime24h,
 	  activeIncident: state.activeIncidentId ? { id: state.activeIncidentId } : null,
 	  paused,

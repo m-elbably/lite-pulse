@@ -25,6 +25,14 @@ const historyBlocks = computed(() => {
   });
 });
 
+// The hover tooltip is invisible to screen readers; summarize the strip for them.
+const historyLabel = computed(() => {
+  const history = props.service.history ?? [];
+  const down = history.filter(item => item.status === 'down').length;
+  return `Last ${history.length} checks: ${history.length - down} up, ${down} down`;
+});
+
+
 function formatResponseTime(value: number | null): string {
   if (value === null) return '—';
   if (value < 1000) return `${value}ms`;
@@ -93,7 +101,15 @@ function hideBlockTooltip() {
         </div>
       </div>
 
-      <div class="history-strip">
+      <p
+        v-if="service.status === 'down' && service.lastError"
+        class="rounded-md bg-destructive/10 px-2.5 py-1.5 text-xs text-destructive line-clamp-3 break-words"
+        :title="service.lastError"
+      >
+        {{ service.lastError }}
+      </p>
+
+      <div class="history-strip" role="img" :aria-label="historyLabel">
         <span
           v-for="(item, index) in historyBlocks"
           :key="`${service.id}-${index}`"
